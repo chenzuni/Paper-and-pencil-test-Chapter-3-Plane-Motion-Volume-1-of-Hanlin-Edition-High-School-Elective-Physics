@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>認知層次配分 vs 答對率</title>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=Noto+Sans+TC:wght@400;600&display=swap" rel="stylesheet" />
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Space Grotesk", "Noto Sans TC", sans-serif;
+            /*background: linear-gradient(135deg, #fef6e4 0%, #e0f2ff 100%);*/
+            background-color: white;
+            color: #0f172a;
+            padding: 48px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .panel {
+            width: min(1200px, 100%);
+            background: #ffffff;
+            border-radius: 28px;
+            padding: 40px 48px 48px;
+            box-shadow: 0 30px 80px rgba(15, 23, 42, 0.18);
+            border: 1px solid rgba(15, 23, 42, 0.08);
+        }
+        .eyebrow {
+            display: none;
+            text-transform: uppercase;
+            letter-spacing: 0.16em;
+            font-size: 12px;
+            color: #38bdf8;
+            margin-bottom: 12px;
+        }
+        h1 {
+            margin: 0;
+            font-size: 34px;
+            letter-spacing: 0.02em;
+            color: #0f172a;
+        }
+        .description {
+            display: none;
+            margin: 10px 0 28px;
+            color: #475569;
+            font-size: 15px;
+            line-height: 1.6;
+        }
+        .stat-grid {
+            /*display: grid;*/
+            display: none;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+            margin-bottom: 28px;
+        }
+        .stat-card {
+            border-radius: 18px;
+            padding: 18px 22px;
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(248, 250, 252, 0.9));
+            border: 1px solid rgba(15, 23, 42, 0.06);
+        }
+        .stat-card:nth-child(2) {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(248, 250, 252, 0.9));
+        }
+        .stat-card:nth-child(3) {
+            background: linear-gradient(135deg, rgba(249, 115, 22, 0.15), rgba(248, 250, 252, 0.92));
+        }
+        .stat-title {
+            font-size: 13px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #475569;
+        }
+        .stat-value {
+            font-size: 30px;
+            font-weight: 600;
+            margin: 8px 0 4px;
+            color: #0f172a;
+        }
+        .stat-meta {
+            font-size: 15px;
+            color: #0ea5e9;
+            font-weight: 600;
+        }
+        .stat-detail {
+            font-size: 13px;
+            color: #475569;
+            margin-top: 4px;
+        }
+        #chart {
+            position: relative;
+            width: 100%;
+            margin-top: 12px;
+        }
+        svg text { font-family: "Noto Sans TC", sans-serif; }
+        .axis text { fill: #475569; font-size: 13px; }
+        .axis path, .axis line { stroke: #cbd5f5; }
+        .grid line {
+            stroke: rgba(148, 163, 184, 0.35);
+            stroke-dasharray: 4 8;
+        }
+        .grid .domain { display: none; }
+        .guide-line {
+            stroke: #fbbf24;
+            stroke-width: 2;
+            stroke-dasharray: 6 6;
+            opacity: 0.8;
+        }
+        .guide-label {
+            fill: #f59e0b;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .bubble circle {
+            stroke: rgba(255, 255, 255, 0.8);
+            stroke-width: 2.5;
+            filter: drop-shadow(0 8px 20px rgba(15, 23, 42, 0.18));
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        .bubble circle.active {
+            stroke: #0f172a;
+            stroke-width: 3;
+        }
+        .bubble text {
+            text-anchor: middle;
+            fill: #0f172a;
+            font-size: 14px;
+            font-weight: 600;
+            pointer-events: none;
+        }
+        .tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(255, 255, 255, 0.97);
+            border-radius: 18px;
+            padding: 16px 20px;
+            border: 1px solid rgba(15, 23, 42, 0.08);
+            box-shadow: 0 20px 60px rgba(15, 23, 42, 0.22);
+            color: #0f172a;
+            width: 260px;
+            opacity: 0;
+            transform: translate(-50%, -110%);
+            transition: opacity 0.2s ease;
+            backdrop-filter: blur(6px);
+        }
+        .tooltip-title {
+            font-weight: 600;
+            font-size: 15px;
+            margin-bottom: 8px;
+        }
+        .tooltip-line {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #475569;
+            margin-top: 4px;
+        }
+        .tooltip-line strong { color: #0f172a; }
+        .tooltip-line.subtle {
+            font-size: 12px;
+            color: #94a3b8;
+        }
+        .legend-row {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-top: 22px;
+            gap: 16px;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px 24px;
+            color: #475569;
+            font-size: 13px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-swatch {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 2px solid rgba(15, 23, 42, 0.08);
+        }
+        #size-legend {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            color: #475569;
+        }
+        .legend-title { font-weight: 600; }
+        .note {
+            display: none;
+            margin-top: 22px;
+            font-size: 13px;
+            color: #475569;
+            line-height: 1.7;
+        }
+        .note strong { color: #0f172a; }
+        @media (max-width: 768px) {
+            .panel { padding: 28px 24px 32px; }
+            h1 { font-size: 26px; }
+            .stat-grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <div class="eyebrow">Physics Item Insights</div>
+        <h1>認知層次配分 vs 答對率</h1>
+        <p class="description">X 軸為雙向細目表中的認知層次配分（占總配分 %），Y 軸為該層次所有題目的平均答對率（含多選題得分率）。泡泡大小對應題目數，顏色對應認知層次。</p>
+
+        <div class="stat-grid">
+            <div class="stat-card" id="best-card">
+                <div class="stat-title">最高答對率</div>
+                <div class="stat-value">--</div>
+                <div class="stat-meta">--</div>
+                <div class="stat-detail">--</div>
+            </div>
+            <div class="stat-card" id="worst-card">
+                <div class="stat-title">最低答對率</div>
+                <div class="stat-value">--</div>
+                <div class="stat-meta">--</div>
+                <div class="stat-detail">--</div>
+            </div>
+            <div class="stat-card" id="share-card">
+                <div class="stat-title">最大配分</div>
+                <div class="stat-value">--</div>
+                <div class="stat-meta">--</div>
+                <div class="stat-detail">--</div>
+            </div>
+        </div>
+
+        <div id="chart"></div>
+        <div class="legend-row">
+            <div class="legend" id="color-legend"></div>
+            <div id="size-legend">
+                <span class="legend-title">泡泡大小 ↗ 題目數</span>
+            </div>
+        </div>
+        <p class="note">
+            <strong>資料來源：</strong> 雙向細目表.csv、答對率及鑑別度表_5人物理考卷.csv。<br />
+            <span class="missing-note"></span>
+        </p>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        const rawLevelData = [
+            {
+                "level": "記憶",
+                "allocation": 0.0,
+                "allocationPercent": 0.0,
+                "questionCount": 9,
+                "avgAccuracy": 90.67,
+                "items": [
+                    { "id": "Q2", "label": "第2題", "type": "單選題", "accuracy": 100.0 },
+                    { "id": "Q3", "label": "第3題", "type": "單選題", "accuracy": 100.0 },
+                    { "id": "Q4", "label": "第4題", "type": "單選題", "accuracy": 100.0 },
+                    { "id": "Q5", "label": "第5題", "type": "單選題", "accuracy": 100.0 },
+                    { "id": "Q6", "label": "第6題", "type": "單選題", "accuracy": 80.0 },
+                    { "id": "Q7", "label": "第7題", "type": "單選題", "accuracy": 100.0 },
+                    { "id": "*1", "label": "多選1", "type": "多選題", "accuracy": 92.0 },
+                    { "id": "*2", "label": "多選2", "type": "多選題", "accuracy": 84.0 },
+                    { "id": "T3", "label": "題組3", "type": "題組題", "accuracy": 60.0 }
+                ]
+            },
+            {
+                "level": "理解",
+                "allocation": 28.5,
+                "allocationPercent": 28.5,
+                "questionCount": 12,
+                "avgAccuracy": 71.33,
+                "items": [
+                    { "id": "Q8", "label": "第8題", "type": "單選題", "accuracy": 80.0 },
+                    { "id": "Q9", "label": "第9題", "type": "單選題", "accuracy": 80.0 },
+                    { "id": "Q10", "label": "第10題", "type": "單選題", "accuracy": 100.0 },
+                    { "id": "Q11", "label": "第11題", "type": "單選題", "accuracy": 0.0 },
+                    { "id": "*3", "label": "多選3", "type": "多選題", "accuracy": 76.0 },
+                    { "id": "*4", "label": "多選4", "type": "多選題", "accuracy": 44.0 },
+                    { "id": "*5", "label": "多選5", "type": "多選題", "accuracy": 16.0 },
+                    { "id": "T4", "label": "題組4", "type": "題組題", "accuracy": 80.0 },
+                    { "id": "T5", "label": "題組5", "type": "題組題", "accuracy": 100.0 },
+                    { "id": "T6", "label": "題組6", "type": "題組題", "accuracy": 80.0 },
+                    { "id": "T7", "label": "題組7", "type": "題組題", "accuracy": 100.0 },
+                    { "id": "T8", "label": "題組8", "type": "題組題", "accuracy": 100.0 }
+                ]
+            },
+            {
+                "level": "應用",
+                "allocation": 42.0,
+                "allocationPercent": 42.0,
+                "questionCount": 11,
+                "avgAccuracy": 48.0,
+                "items": [
+                    { "id": "Q1", "label": "第1題", "type": "單選題", "accuracy": 100.0 },
+                    { "id": "Q12", "label": "第12題", "type": "單選題", "accuracy": 40.0 },
+                    { "id": "Q13", "label": "第13題", "type": "單選題", "accuracy": 0.0 },
+                    { "id": "Q14", "label": "第14題", "type": "單選題", "accuracy": 40.0 },
+                    { "id": "*6", "label": "多選6", "type": "多選題", "accuracy": 76.0 },
+                    { "id": "*7", "label": "多選7", "type": "多選題", "accuracy": 52.0 },
+                    { "id": "T1", "label": "題組1", "type": "題組題", "accuracy": 100.0 },
+                    { "id": "T9", "label": "題組9", "type": "題組題", "accuracy": 20.0 },
+                    { "id": "T10", "label": "題組10", "type": "題組題", "accuracy": 40.0 },
+                    { "id": "T11", "label": "題組11", "type": "題組題", "accuracy": 40.0 },
+                    { "id": "T12", "label": "題組12", "type": "題組題", "accuracy": 20.0 }
+                ]
+            },
+            {
+                "level": "分析",
+                "allocation": 29.5,
+                "allocationPercent": 29.5,
+                "questionCount": 1,
+                "avgAccuracy": 40.0,
+                "items": [
+                    { "id": "T2", "label": "題組2", "type": "題組題", "accuracy": 40.0 }
+                ]
+            },
+            { "level": "評鑑", "allocation": 0.0, "allocationPercent": 0.0, "questionCount": 0, "avgAccuracy": null, "items": [] },
+            { "level": "創造", "allocation": 0.0, "allocationPercent": 0.0, "questionCount": 0, "avgAccuracy": null, "items": [] }
+        ];
+
+        const palette = {
+            '記憶': '#2563eb',
+            '理解': '#10b981',
+            '應用': '#f97316',
+            '分析': '#a855f7',
+            '評鑑': '#f43f5e',
+            '創造': '#0ea5e9'
+        };
+
+        const plottedLevels = rawLevelData.filter(d => Number.isFinite(d.avgAccuracy) && d.questionCount > 0);
+        const dormantLevels = rawLevelData.filter(d => !d.questionCount);
+
+        const margin = { top: 30, right: 40, bottom: 80, left: 90 };
+        const width = 980 - margin.left - margin.right;
+        const height = 520 - margin.top - margin.bottom;
+
+        const svg = d3.select('#chart')
+            .append('svg')
+            .attr('viewBox', `0 0 ${width + margin.left + margin.right} ${height + margin.top + margin.bottom}`)
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+
+        const xMax = d3.max(plottedLevels, d => d.allocationPercent) || 10;
+        const x = d3.scaleLinear()
+            .domain([0, xMax * 1.1])
+            .range([0, width])
+            .nice();
+
+        const y = d3.scaleLinear()
+            .domain([0, 100])
+            .range([height, 0])
+            .nice();
+
+        const radiusDomain = d3.extent(plottedLevels, d => d.questionCount);
+        const radius = d3.scaleSqrt()
+            .domain(radiusDomain[0] === radiusDomain[1] ? [0, radiusDomain[1] * 2] : radiusDomain)
+            .range([22, 62]);
+
+        svg.append('g')
+            .attr('class', 'grid')
+            .call(d3.axisLeft(y).tickSize(-width).tickFormat(() => ''));
+
+        svg.append('g')
+            .attr('class', 'grid')
+            .attr('transform', `translate(0,${height})`)
+            .call(d3.axisBottom(x).tickSize(-height).tickFormat(() => ''));
+
+        svg.append('g')
+            .attr('class', 'axis')
+            .attr('transform', `translate(0,${height})`)
+            .call(d3.axisBottom(x).ticks(6).tickFormat(d => `${d}%`));
+
+        svg.append('g')
+            .attr('class', 'axis')
+            .call(d3.axisLeft(y).ticks(6).tickFormat(d => `${d}%`));
+
+        svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('x', width / 2)
+            .attr('y', height + 60)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#0f172a')
+            .attr('font-weight', 600)
+            .text('認知層次配分（%）');
+
+        svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('transform', 'rotate(-90)')
+            .attr('x', -height / 2)
+            .attr('y', -60)
+            .attr('text-anchor', 'middle')
+            .attr('fill', '#0f172a')
+            .attr('font-weight', 600)
+            .text('平均答對率（%）');
+
+        const avgShare = d3.mean(plottedLevels, d => d.allocationPercent || 0) || 0;
+        const avgAccuracy = d3.mean(plottedLevels, d => d.avgAccuracy || 0) || 0;
+
+        svg.append('line')
+            .attr('class', 'guide-line')
+            .attr('x1', x(avgShare))
+            .attr('x2', x(avgShare))
+            .attr('y1', 0)
+            .attr('y2', height);
+
+        svg.append('text')
+            .attr('class', 'guide-label')
+            .attr('x', x(avgShare) + 6)
+            .attr('y', 16)
+            .text(`平均配分 ${avgShare.toFixed(1)}%`);
+
+        svg.append('line')
+            .attr('class', 'guide-line')
+            .attr('x1', 0)
+            .attr('x2', width)
+            .attr('y1', y(avgAccuracy))
+            .attr('y2', y(avgAccuracy));
+
+        svg.append('text')
+            .attr('class', 'guide-label')
+            .attr('x', 8)
+            .attr('y', y(avgAccuracy) - 8)
+            .text(`平均答對率 ${avgAccuracy.toFixed(1)}%`);
+
+        const tooltip = d3.select('#chart').append('div').attr('class', 'tooltip');
+
+        const bubbles = svg.selectAll('.bubble')
+            .data(plottedLevels)
+            .enter()
+            .append('g')
+            .attr('class', 'bubble')
+            .attr('transform', d => `translate(${x(d.allocationPercent)}, ${y(d.avgAccuracy)})`);
+
+        bubbles.append('circle')
+            .attr('r', 0)
+            .attr('fill', d => palette[d.level] || '#94a3b8')
+            .transition()
+            .duration(700)
+            .delay((_, i) => i * 120)
+            .attr('r', d => radius(d.questionCount));
+
+        bubbles.append('text')
+            .attr('dy', 5)
+            .text(d => d.level);
+
+        function buildTypeSummary(items) {
+            const summary = d3.rollups(items, v => v.length, v => v.type)
+                .sort((a, b) => b[1] - a[1])
+                .map(([type, count]) => `${type}×${count}`)
+                .join(' ／ ');
+            return summary || '—';
+        }
+
+        function bestItem(items) {
+            return items.length ? d3.greatest(items, item => item.accuracy) : null;
+        }
+
+        function worstItem(items) {
+            return items.length ? d3.least(items, item => item.accuracy) : null;
+        }
+
+        bubbles.on('mouseenter', function(event, d) {
+            d3.select(this).select('circle').classed('active', true);
+            const [mouseX, mouseY] = d3.pointer(event, this);
+            const typeSummary = buildTypeSummary(d.items);
+            const hi = bestItem(d.items);
+            const lo = worstItem(d.items);
+            tooltip.style('opacity', 1)
+                .style('left', `${x(d.allocationPercent) + margin.left + mouseX * 0.1}px`)
+                .style('top', `${y(d.avgAccuracy) + margin.top - mouseY * 0.2}px`)
+                .html(`
+                    <div class="tooltip-title">${d.level}</div>
+                    <div class="tooltip-line"><span>配分</span><strong>${d.allocationPercent.toFixed(1)}%</strong></div>
+                    <div class="tooltip-line"><span>平均答對率</span><strong>${d.avgAccuracy.toFixed(2)}%</strong></div>
+                    <div class="tooltip-line"><span>題目數</span><strong>${d.questionCount} 題</strong></div>
+                    <div class="tooltip-line"><span>題型組成</span><strong>${typeSummary}</strong></div>
+                    ${hi ? `<div class="tooltip-line subtle">最高：${hi.label} ${hi.accuracy}%</div>` : ''}
+                    ${lo ? `<div class="tooltip-line subtle">最低：${lo.label} ${lo.accuracy}%</div>` : ''}
+                `);
+        }).on('mousemove', function(event, d) {
+            const [mouseX, mouseY] = d3.pointer(event, this);
+            tooltip.style('left', `${x(d.allocationPercent) + margin.left + mouseX * 0.1}px`)
+                .style('top', `${y(d.avgAccuracy) + margin.top - mouseY * 0.2}px`);
+        }).on('mouseleave', function() {
+            d3.select(this).select('circle').classed('active', false);
+            tooltip.style('opacity', 0);
+        });
+
+        const colorLegend = d3.select('#color-legend');
+        plottedLevels.forEach(level => {
+            colorLegend.append('div')
+                .attr('class', 'legend-item')
+                .html(`<span class="legend-swatch" style="background:${palette[level.level] || '#94a3b8'}"></span>${level.level}`);
+        });
+
+        const sizeLegend = d3.select('#size-legend').append('svg')
+            .attr('width', 220)
+            .attr('height', 80);
+        const counts = Array.from(new Set(plottedLevels.map(d => d.questionCount))).sort((a, b) => a - b);
+        const samples = counts.length >= 3 ? [counts[0], counts[Math.floor(counts.length / 2)], counts[counts.length - 1]] : counts;
+        let offset = 0;
+        samples.forEach((count, idx) => {
+            const r = radius(count);
+            const cx = offset + r + 10;
+            sizeLegend.append('circle')
+                .attr('cx', cx)
+                .attr('cy', 50)
+                .attr('r', r)
+                .attr('fill', 'none')
+                .attr('stroke', '#94a3b8');
+            sizeLegend.append('text')
+                .attr('x', cx)
+                .attr('y', 72)
+                .attr('text-anchor', 'middle')
+                .attr('font-size', 12)
+                .attr('fill', '#475569')
+                .text(`${count} 題`);
+            offset += r * 2 + 18;
+        });
+
+        function updateStatCard(id, label) {
+            const card = document.querySelector(id);
+            if (!card) return;
+            card.querySelector('.stat-title').textContent = label.title;
+            card.querySelector('.stat-value').textContent = label.value;
+            card.querySelector('.stat-meta').textContent = label.meta;
+            card.querySelector('.stat-detail').textContent = label.detail;
+        }
+
+        const best = d3.greatest(plottedLevels, d => d.avgAccuracy);
+        const worst = d3.least(plottedLevels, d => d.avgAccuracy);
+        const heaviest = d3.greatest(plottedLevels, d => d.allocationPercent);
+        const bestLeaf = bestItem(best.items);
+        const worstLeaf = worstItem(worst.items);
+
+        updateStatCard('#best-card', {
+            title: '最高答對率',
+            value: `${best.avgAccuracy.toFixed(1)}%`,
+            meta: `${best.level}｜${best.questionCount} 題`,
+            detail: bestLeaf ? `最佳題：${bestLeaf.label} ${bestLeaf.accuracy}%` : `配分 ${best.allocationPercent.toFixed(1)}%`
+        });
+        updateStatCard('#worst-card', {
+            title: '最低答對率',
+            value: `${worst.avgAccuracy.toFixed(1)}%`,
+            meta: `${worst.level}｜${worst.questionCount} 題`,
+            detail: worstLeaf ? `最低題：${worstLeaf.label} ${worstLeaf.accuracy}%` : `配分 ${worst.allocationPercent.toFixed(1)}%`
+        });
+        updateStatCard('#share-card', {
+            title: '最大配分',
+            value: `${heaviest.allocationPercent.toFixed(1)}%`,
+            meta: `${heaviest.level}｜${heaviest.questionCount} 題`,
+            detail: `平均答對率 ${heaviest.avgAccuracy.toFixed(1)}%`
+        });
+
+        const missingText = dormantLevels.length
+            ? `尚無題目的層次：${dormantLevels.map(d => d.level).join('、')}（圖中暫未呈現）。`
+            : '目前所有層次皆有題目。';
+        document.querySelector('.missing-note').textContent = missingText;
+    </script>
+</body>
+</html>
