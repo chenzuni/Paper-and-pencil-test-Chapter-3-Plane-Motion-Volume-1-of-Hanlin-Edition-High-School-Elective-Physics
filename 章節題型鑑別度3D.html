@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>章節 × 題型 × 鑑別度 3D 視覺圖</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=Noto+Sans+TC:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at 30% 20%, #f4f6fb, #ffffff 60%);
+            font-family: "Space Grotesk", "Noto Sans TC", sans-serif;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 36px 18px;
+        }
+        .panel {
+            width: min(1280px, 100%);
+            background: #fff;
+            border-radius: 20px;
+            padding: 32px 40px 36px;
+            box-shadow: 0 24px 60px rgba(15,23,42,0.12);
+            border: 1px solid rgba(15,23,42,0.06);
+        }
+        h1 {
+            text-align: center;
+            margin: 0;
+            font-size: 30px;
+            color: #111827;
+            letter-spacing: 0.04em;
+        }
+        .subtitle {
+            text-align: center;
+            color: #4b5563;
+            font-size: 14px;
+            margin: 10px 0 24px;
+        }
+        #chart {
+            width: 100%;
+            height: 640px;
+        }
+        .note {
+            margin-top: 14px;
+            font-size: 12px;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+        .note strong { color: #2563eb; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h1>章節 × 題型 × 鑑別度 3D 分布圖</h1>
+        <p class="subtitle">X：章節　｜　Y：題型　｜　Z：鑑別度 (Ph − Pl)</p>
+        <div id="chart"></div>
+        <div class="note">
+            <strong>註：</strong> 資料根據 5 人物理考卷的鑑別度表。章節依雙向細目表分為 3-1 / 3-2 / 3-3，題型分為單選題、 多選題、 題組題。點顏色使用 D3 的 Turbo 色階突顯鑑別度大小。
+        </div>
+    </div>
+
+    <script>
+        const chapterOrder = ['3-1 平面運動的描述', '3-2 平面運動的速度與加速度', '3-3 拋體運動'];
+        const typeOrder = ['單選題', '多選題', '題組題'];
+
+        const questionData = [
+            // 單選題 (章節依題號順序映射)
+            { id: 'Q1', chapter: '3-1 平面運動的描述', type: '單選題', D: 0 },
+            { id: 'Q2', chapter: '3-2 平面運動的速度與加速度', type: '單選題', D: 0 },
+            { id: 'Q3', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q4', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q5', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q6', chapter: '3-3 拋體運動', type: '單選題', D: 50 },
+            { id: 'Q7', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q8', chapter: '3-3 拋體運動', type: '單選題', D: 50 },
+            { id: 'Q9', chapter: '3-3 拋體運動', type: '單選題', D: 50 },
+            { id: 'Q10', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q11', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q12', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q13', chapter: '3-3 拋體運動', type: '單選題', D: 0 },
+            { id: 'Q14', chapter: '3-3 拋體運動', type: '單選題', D: 50 },
+            // 多選題 (大題2 對應章節 3-2/3-3)
+            { id: '*1', chapter: '3-2 平面運動的速度與加速度', type: '多選題', D: 20 },
+            { id: '*2', chapter: '3-2 平面運動的速度與加速度', type: '多選題', D: 20 },
+            { id: '*3', chapter: '3-3 拋體運動', type: '多選題', D: -20 },
+            { id: '*4', chapter: '3-3 拋體運動', type: '多選題', D: 0 },
+            { id: '*5', chapter: '3-3 拋體運動', type: '多選題', D: -10 },
+            { id: '*6', chapter: '3-3 拋體運動', type: '多選題', D: 0 },
+            { id: '*7', chapter: '3-3 拋體運動', type: '多選題', D: 20 },
+            // 題組題 (大題3)
+            { id: 'T1', chapter: '3-3 拋體運動', type: '題組題', D: 0 },
+            { id: 'T2', chapter: '3-3 拋體運動', type: '題組題', D: 50 },
+            { id: 'T3', chapter: '3-3 拋體運動', type: '題組題', D: 0 },
+            { id: 'T4', chapter: '3-3 拋體運動', type: '題組題', D: 50 },
+            { id: 'T5', chapter: '3-3 拋體運動', type: '題組題', D: 0 },
+            { id: 'T6', chapter: '3-3 拋體運動', type: '題組題', D: 50 },
+            { id: 'T7', chapter: '3-3 拋體運動', type: '題組題', D: 0 },
+            { id: 'T8', chapter: '3-3 拋體運動', type: '題組題', D: 0 },
+            { id: 'T9', chapter: '3-3 拋體運動', type: '題組題', D: 50 },
+            { id: 'T10', chapter: '3-3 拋體運動', type: '題組題', D: 0 },
+            { id: 'T11', chapter: '3-3 拋體運動', type: '題組題', D: 0 },
+            { id: 'T12', chapter: '3-3 拋體運動', type: '題組題', D: 50 }
+        ];
+
+        const chapterScale = d3.scaleBand().domain(chapterOrder).range([0, chapterOrder.length - 1]);
+        const typeScale = d3.scaleBand().domain(typeOrder).range([0, typeOrder.length - 1]);
+        const colorScale = d3.scaleSequential(d3.interpolateTurbo).domain([-20, 60]);
+
+        const jitter = 0.18;
+        const plotData = [{
+            type: 'scatter3d',
+            mode: 'markers',
+            x: questionData.map(d => chapterScale(d.chapter) + (Math.random() - 0.5) * jitter),
+            y: questionData.map(d => typeScale(d.type) + (Math.random() - 0.5) * jitter),
+            z: questionData.map(d => d.D),
+            text: questionData.map(d => `${d.id}｜${d.chapter}｜${d.type}｜D=${d.D}`),
+            hovertemplate: '<b>%{text}</b><extra></extra>',
+            marker: {
+                size: 8,
+                color: questionData.map(d => colorScale(d.D)),
+                line: { color: '#ffffff', width: 1 }
+            }
+        }];
+
+        const layout = {
+            margin: { l: 10, r: 10, t: 10, b: 10 },
+            paper_bgcolor: 'rgba(0,0,0,0)',
+            plot_bgcolor: 'rgba(0,0,0,0)',
+            scene: {
+                xaxis: {
+                    title: '章節',
+                    tickvals: chapterOrder.map((_, i) => i),
+                    ticktext: chapterOrder,
+                    backgroundcolor: 'rgba(228,230,241,0.2)',
+                    gridcolor: 'rgba(148,163,184,0.4)'
+                },
+                yaxis: {
+                    title: '題型',
+                    tickvals: typeOrder.map((_, i) => i),
+                    ticktext: typeOrder,
+                    backgroundcolor: 'rgba(228,230,241,0.2)',
+                    gridcolor: 'rgba(148,163,184,0.4)'
+                },
+                zaxis: {
+                    title: '鑑別度 (Ph − Pl)',
+                    range: [-30, 60],
+                    backgroundcolor: 'rgba(228,230,241,0.2)',
+                    gridcolor: 'rgba(148,163,184,0.4)'
+                },
+                camera: { eye: { x: 1.4, y: 1.4, z: 0.9 } }
+            }
+        };
+
+        Plotly.newPlot('chart', plotData, layout, { displaylogo: false, responsive: true });
+    </script>
+</body>
+</html>

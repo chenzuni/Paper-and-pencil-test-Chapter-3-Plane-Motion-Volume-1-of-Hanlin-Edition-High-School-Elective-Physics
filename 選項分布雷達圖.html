@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每題選項分布雷達圖 - 5人物理考卷</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        select, input[type="number"] {
+            padding: 8px 12px;
+            font-size: 14px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        input[type="number"] {
+            width: 80px;
+        }
+        #autoPlayBtn {
+            padding: 8px 16px;
+            font-size: 14px;
+            border: none;
+            border-radius: 4px;
+            background: #2196F3;
+            color: white;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        #autoPlayBtn:hover {
+            background: #1976D2;
+        }
+        #autoPlayBtn.playing {
+            background: #f44336;
+        }
+        #autoPlayBtn.playing:hover {
+            background: #d32f2f;
+        }
+        .chart-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        .radar-wrapper {
+            position: relative;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+        }
+        .legend-color {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+        }
+        .question-info {
+            text-align: center;
+            margin-bottom: 15px;
+            font-size: 16px;
+            color: #333;
+        }
+        .correct-answer {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+        .grid-labels {
+            font-size: 12px;
+            fill: #666;
+        }
+        .axis-label {
+            font-size: 14px;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>每題選項分布雷達圖 - 5人物理考卷</h1>
+        
+        <div class="controls">
+            <div class="control-group">
+                <label>選擇大題：</label>
+                <select id="sectionSelect">
+                    <option value="單選">單選題</option>
+                    <option value="多選">多選題</option>
+                    <option value="題組">題組</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>選擇題號：</label>
+                <select id="questionSelect"></select>
+            </div>
+            <div class="control-group">
+                <label>間隔(ms)：</label>
+                <input type="number" id="frameMs" value="300" min="100" step="50">
+            </div>
+            <div class="control-group">
+                <button id="autoPlayBtn">▶ Auto Play</button>
+            </div>
+        </div>
+        
+        <div class="question-info" id="questionInfo"></div>
+        
+        <div class="chart-container">
+            <div class="radar-wrapper" id="chart"></div>
+        </div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #2196F3;"></div>
+                <span>全體 (T)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4CAF50;"></div>
+                <span>高分組 (H)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f44336;"></div>
+                <span>低分組 (L)</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // All question data with T, H, L values
+        const allData = [
+            // 單選題 (大題1)
+            { section: "單選", qNum: 1, label: "1", correct: ["C"],
+              T: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              H: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              L: { A: 0, B: 0, C: 100, D: 0, E: 0 } },
+            { section: "單選", qNum: 2, label: "2", correct: ["C"],
+              T: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              H: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              L: { A: 0, B: 0, C: 100, D: 0, E: 0 } },
+            { section: "單選", qNum: 3, label: "3", correct: ["D"],
+              T: { A: 0, B: 0, C: 0, D: 100, E: 0 },
+              H: { A: 0, B: 0, C: 0, D: 100, E: 0 },
+              L: { A: 0, B: 0, C: 0, D: 100, E: 0 } },
+            { section: "單選", qNum: 4, label: "4", correct: ["C"],
+              T: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              H: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              L: { A: 0, B: 0, C: 100, D: 0, E: 0 } },
+            { section: "單選", qNum: 5, label: "5", correct: ["B"],
+              T: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              H: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              L: { A: 0, B: 100, C: 0, D: 0, E: 0 } },
+            { section: "單選", qNum: 6, label: "6", correct: ["B"],
+              T: { A: 0, B: 80, C: 20, D: 0, E: 0 },
+              H: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              L: { A: 0, B: 50, C: 50, D: 0, E: 0 } },
+            { section: "單選", qNum: 7, label: "7", correct: ["E"],
+              T: { A: 0, B: 0, C: 0, D: 0, E: 100 },
+              H: { A: 0, B: 0, C: 0, D: 0, E: 100 },
+              L: { A: 0, B: 0, C: 0, D: 0, E: 100 } },
+            { section: "單選", qNum: 8, label: "8", correct: ["A"],
+              T: { A: 80, B: 0, C: 20, D: 0, E: 0 },
+              H: { A: 100, B: 0, C: 0, D: 0, E: 0 },
+              L: { A: 50, B: 0, C: 50, D: 0, E: 0 } },
+            { section: "單選", qNum: 9, label: "9", correct: ["B"],
+              T: { A: 0, B: 80, C: 0, D: 20, E: 0 },
+              H: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              L: { A: 0, B: 50, C: 0, D: 50, E: 0 } },
+            { section: "單選", qNum: 10, label: "10", correct: ["A"],
+              T: { A: 100, B: 0, C: 0, D: 0, E: 0 },
+              H: { A: 100, B: 0, C: 0, D: 0, E: 0 },
+              L: { A: 100, B: 0, C: 0, D: 0, E: 0 } },
+            { section: "單選", qNum: 11, label: "11", correct: ["E"],
+              T: { A: 20, B: 40, C: 0, D: 40, E: 0 },
+              H: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              L: { A: 50, B: 0, C: 0, D: 50, E: 0 } },
+            { section: "單選", qNum: 12, label: "12", correct: ["C"],
+              T: { A: 20, B: 20, C: 40, D: 0, E: 20 },
+              H: { A: 50, B: 0, C: 50, D: 0, E: 0 },
+              L: { A: 0, B: 0, C: 50, D: 0, E: 50 } },
+            { section: "單選", qNum: 13, label: "13", correct: ["C"],
+              T: { A: 20, B: 40, C: 0, D: 0, E: 40 },
+              H: { A: 0, B: 50, C: 0, D: 0, E: 50 },
+              L: { A: 0, B: 50, C: 0, D: 0, E: 50 } },
+            { section: "單選", qNum: 14, label: "14", correct: ["B"],
+              T: { A: 20, B: 40, C: 20, D: 20, E: 0 },
+              H: { A: 50, B: 50, C: 0, D: 0, E: 0 },
+              L: { A: 0, B: 0, C: 50, D: 50, E: 0 } },
+            // 多選題 (大題2)
+            { section: "多選", qNum: 1, label: "*1", correct: ["A", "C", "E"],
+              T: { A: 100, B: 0, C: 100, D: 0, E: 80 },
+              H: { A: 100, B: 0, C: 100, D: 0, E: 100 },
+              L: { A: 100, B: 0, C: 100, D: 0, E: 50 } },
+            { section: "多選", qNum: 2, label: "*2", correct: ["B", "D"],
+              T: { A: 0, B: 100, C: 0, D: 100, E: 40 },
+              H: { A: 0, B: 100, C: 0, D: 100, E: 0 },
+              L: { A: 0, B: 100, C: 0, D: 100, E: 50 } },
+            { section: "多選", qNum: 3, label: "*3", correct: ["B", "D"],
+              T: { A: 0, B: 100, C: 0, D: 80, E: 40 },
+              H: { A: 0, B: 100, C: 0, D: 50, E: 50 },
+              L: { A: 0, B: 100, C: 0, D: 100, E: 50 } },
+            { section: "多選", qNum: 4, label: "*4", correct: ["A", "B"],
+              T: { A: 60, B: 80, C: 40, D: 40, E: 0 },
+              H: { A: 50, B: 100, C: 0, D: 50, E: 0 },
+              L: { A: 50, B: 100, C: 50, D: 50, E: 0 } },
+            { section: "多選", qNum: 5, label: "*5", correct: ["C", "D"],
+              T: { A: 60, B: 40, C: 0, D: 80, E: 20 },
+              H: { A: 50, B: 50, C: 0, D: 50, E: 50 },
+              L: { A: 50, B: 50, C: 0, D: 100, E: 0 } },
+            { section: "多選", qNum: 6, label: "*6", correct: ["A", "B", "D"],
+              T: { A: 100, B: 80, C: 0, D: 60, E: 0 },
+              H: { A: 100, B: 50, C: 0, D: 100, E: 0 },
+              L: { A: 100, B: 100, C: 0, D: 50, E: 0 } },
+            { section: "多選", qNum: 7, label: "*7", correct: ["B", "E"],
+              T: { A: 40, B: 100, C: 20, D: 40, E: 80 },
+              H: { A: 0, B: 100, C: 50, D: 50, E: 100 },
+              L: { A: 50, B: 100, C: 0, D: 50, E: 50 } },
+            // 題組 (大題3)
+            { section: "題組", qNum: 1, label: "1", correct: ["E"],
+              T: { A: 0, B: 0, C: 0, D: 0, E: 100 },
+              H: { A: 0, B: 0, C: 0, D: 0, E: 100 },
+              L: { A: 0, B: 0, C: 0, D: 0, E: 100 } },
+            { section: "題組", qNum: 2, label: "2", correct: ["D"],
+              T: { A: 20, B: 40, C: 0, D: 40, E: 0 },
+              H: { A: 0, B: 50, C: 0, D: 50, E: 0 },
+              L: { A: 50, B: 50, C: 0, D: 0, E: 0 } },
+            { section: "題組", qNum: 3, label: "3", correct: ["E"],
+              T: { A: 0, B: 40, C: 0, D: 0, E: 60 },
+              H: { A: 0, B: 50, C: 0, D: 0, E: 50 },
+              L: { A: 0, B: 50, C: 0, D: 0, E: 50 } },
+            { section: "題組", qNum: 4, label: "4", correct: ["B"],
+              T: { A: 20, B: 80, C: 0, D: 0, E: 0 },
+              H: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              L: { A: 50, B: 50, C: 0, D: 0, E: 0 } },
+            { section: "題組", qNum: 5, label: "5", correct: ["D"],
+              T: { A: 0, B: 0, C: 0, D: 100, E: 0 },
+              H: { A: 0, B: 0, C: 0, D: 100, E: 0 },
+              L: { A: 0, B: 0, C: 0, D: 100, E: 0 } },
+            { section: "題組", qNum: 6, label: "6", correct: ["C"],
+              T: { A: 20, B: 0, C: 80, D: 0, E: 0 },
+              H: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              L: { A: 50, B: 0, C: 50, D: 0, E: 0 } },
+            { section: "題組", qNum: 7, label: "7", correct: ["B"],
+              T: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              H: { A: 0, B: 100, C: 0, D: 0, E: 0 },
+              L: { A: 0, B: 100, C: 0, D: 0, E: 0 } },
+            { section: "題組", qNum: 8, label: "8", correct: ["C"],
+              T: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              H: { A: 0, B: 0, C: 100, D: 0, E: 0 },
+              L: { A: 0, B: 0, C: 100, D: 0, E: 0 } },
+            { section: "題組", qNum: 9, label: "9", correct: ["A"],
+              T: { A: 20, B: 40, C: 20, D: 0, E: 20 },
+              H: { A: 50, B: 50, C: 0, D: 0, E: 0 },
+              L: { A: 0, B: 0, C: 50, D: 0, E: 50 } },
+            { section: "題組", qNum: 10, label: "10", correct: ["D"],
+              T: { A: 20, B: 20, C: 20, D: 40, E: 0 },
+              H: { A: 50, B: 0, C: 0, D: 50, E: 0 },
+              L: { A: 0, B: 0, C: 50, D: 50, E: 0 } },
+            { section: "題組", qNum: 11, label: "11", correct: ["D"],
+              T: { A: 0, B: 40, C: 0, D: 60, E: 0 },
+              H: { A: 0, B: 0, C: 0, D: 100, E: 0 },
+              L: { A: 0, B: 50, C: 0, D: 50, E: 0 } },
+            { section: "題組", qNum: 12, label: "12", correct: ["A"],
+              T: { A: 20, B: 20, C: 60, D: 0, E: 0 },
+              H: { A: 50, B: 0, C: 50, D: 0, E: 0 },
+              L: { A: 0, B: 50, C: 50, D: 0, E: 0 } }
+        ];
+
+        const options = ["A", "B", "C", "D", "E"];
+        const colors = {
+            T: "#2196F3",
+            H: "#4CAF50",
+            L: "#f44336"
+        };
+
+        // Radar chart dimensions
+        const width = 500;
+        const height = 500;
+        const margin = 60;
+        const radius = Math.min(width, height) / 2 - margin;
+        const levels = 5; // Number of concentric circles
+        const maxValue = 100;
+
+        // Angle for each axis
+        const angleSlice = (Math.PI * 2) / options.length;
+
+        // Scale for radius
+        const rScale = d3.scaleLinear()
+            .domain([0, maxValue])
+            .range([0, radius]);
+
+        // Line generator for radar
+        const radarLine = d3.lineRadial()
+            .radius(d => rScale(d.value))
+            .angle((d, i) => i * angleSlice)
+            .curve(d3.curveLinearClosed);
+
+        // Create SVG
+        let svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width)
+            .attr("height", height);
+
+        let g = svg.append("g")
+            .attr("transform", `translate(${width/2}, ${height/2})`);
+
+        // Tooltip
+        const tooltip = d3.select("#tooltip");
+
+        // Draw the radar chart
+        function drawRadar(questionData) {
+            // Clear previous
+            g.selectAll("*").remove();
+
+            // Draw concentric circles (grid)
+            for (let level = 1; level <= levels; level++) {
+                const levelRadius = (radius / levels) * level;
+                g.append("circle")
+                    .attr("r", levelRadius)
+                    .attr("fill", "none")
+                    .attr("stroke", "#ddd")
+                    .attr("stroke-width", 1);
+                
+                // Add level labels
+                g.append("text")
+                    .attr("class", "grid-labels")
+                    .attr("x", 5)
+                    .attr("y", -levelRadius)
+                    .text((maxValue / levels) * level + "%");
+            }
+
+            // Draw axes
+            options.forEach((opt, i) => {
+                const angle = i * angleSlice - Math.PI / 2;
+                const x = Math.cos(angle) * radius;
+                const y = Math.sin(angle) * radius;
+
+                // Axis line
+                g.append("line")
+                    .attr("x1", 0)
+                    .attr("y1", 0)
+                    .attr("x2", x)
+                    .attr("y2", y)
+                    .attr("stroke", "#ccc")
+                    .attr("stroke-width", 1);
+
+                // Axis label
+                const labelRadius = radius + 25;
+                const labelX = Math.cos(angle) * labelRadius;
+                const labelY = Math.sin(angle) * labelRadius;
+
+                const isCorrect = questionData.correct.includes(opt);
+                
+                g.append("text")
+                    .attr("class", "axis-label")
+                    .attr("x", labelX)
+                    .attr("y", labelY)
+                    .attr("text-anchor", "middle")
+                    .attr("dominant-baseline", "middle")
+                    .attr("fill", isCorrect ? "#4CAF50" : "#333")
+                    .text(opt + (isCorrect ? " ★" : ""));
+            });
+
+            // Draw radar areas for T, H, L
+            ["L", "H", "T"].forEach(group => {
+                const data = options.map(opt => ({
+                    axis: opt,
+                    value: questionData[group][opt],
+                    group: group
+                }));
+
+                // Area
+                g.append("path")
+                    .datum(data)
+                    .attr("d", radarLine)
+                    .attr("fill", colors[group])
+                    .attr("fill-opacity", 0.15)
+                    .attr("stroke", colors[group])
+                    .attr("stroke-width", 2);
+
+                // Points
+                data.forEach((d, i) => {
+                    const angle = i * angleSlice - Math.PI / 2;
+                    const x = Math.cos(angle) * rScale(d.value);
+                    const y = Math.sin(angle) * rScale(d.value);
+
+                    g.append("circle")
+                        .attr("cx", x)
+                        .attr("cy", y)
+                        .attr("r", 5)
+                        .attr("fill", colors[group])
+                        .attr("stroke", "white")
+                        .attr("stroke-width", 2)
+                        .on("mouseover", (event) => {
+                            const groupName = group === "T" ? "全體" : (group === "H" ? "高分組" : "低分組");
+                            tooltip
+                                .style("opacity", 1)
+                                .html(`
+                                    <strong>選項 ${d.axis}</strong><br>
+                                    ${groupName}: ${d.value}%<br>
+                                    ${questionData.correct.includes(d.axis) ? '<span style="color: #4CAF50;">★ 正確答案</span>' : ''}
+                                `)
+                                .style("left", (event.pageX + 10) + "px")
+                                .style("top", (event.pageY - 30) + "px");
+                        })
+                        .on("mouseout", () => {
+                            tooltip.style("opacity", 0);
+                        });
+                });
+            });
+
+            // Update question info
+            const infoText = `${questionData.section}題 第${questionData.label.replace('*', '')}題 — 正確答案: `;
+            document.getElementById("questionInfo").innerHTML = 
+                infoText + `<span class="correct-answer">${questionData.correct.join(", ")}</span>`;
+        }
+
+        // Update question dropdown based on section
+        function updateQuestionDropdown(section) {
+            const questionSelect = document.getElementById("questionSelect");
+            questionSelect.innerHTML = "";
+            
+            const sectionQuestions = allData.filter(d => d.section === section);
+            sectionQuestions.forEach(q => {
+                const option = document.createElement("option");
+                option.value = q.qNum;
+                option.textContent = `第 ${q.label.replace('*', '')} 題`;
+                questionSelect.appendChild(option);
+            });
+
+            // Draw first question
+            if (sectionQuestions.length > 0) {
+                drawRadar(sectionQuestions[0]);
+            }
+        }
+
+        // Event listeners
+        document.getElementById("sectionSelect").addEventListener("change", (e) => {
+            updateQuestionDropdown(e.target.value);
+        });
+
+        document.getElementById("questionSelect").addEventListener("change", (e) => {
+            const section = document.getElementById("sectionSelect").value;
+            const question = allData.find(d => d.section === section && d.qNum === parseInt(e.target.value));
+            if (question) {
+                drawRadar(question);
+            }
+        });
+
+        // Initialize
+        updateQuestionDropdown("單選");
+
+        // Auto play functionality
+        let autoPlayInterval = null;
+        let currentPlayIndex = 0;
+
+        document.getElementById("autoPlayBtn").addEventListener("click", function() {
+            const btn = this;
+            
+            if (autoPlayInterval) {
+                // Stop playing
+                clearInterval(autoPlayInterval);
+                autoPlayInterval = null;
+                btn.textContent = "▶ Auto Play";
+                btn.classList.remove("playing");
+            } else {
+                // Start playing
+                const frameMs = parseInt(document.getElementById("frameMs").value) || 300;
+                currentPlayIndex = 0;
+                btn.textContent = "■ Stop";
+                btn.classList.add("playing");
+
+                function playNext() {
+                    if (currentPlayIndex >= allData.length) {
+                        // Loop back or stop
+                        clearInterval(autoPlayInterval);
+                        autoPlayInterval = null;
+                        btn.textContent = "▶ Auto Play";
+                        btn.classList.remove("playing");
+                        return;
+                    }
+
+                    const q = allData[currentPlayIndex];
+                    
+                    // Update dropdowns
+                    document.getElementById("sectionSelect").value = q.section;
+                    const questionSelect = document.getElementById("questionSelect");
+                    questionSelect.innerHTML = "";
+                    const sectionQuestions = allData.filter(d => d.section === q.section);
+                    sectionQuestions.forEach(sq => {
+                        const option = document.createElement("option");
+                        option.value = sq.qNum;
+                        option.textContent = `第 ${sq.label.replace('*', '')} 題`;
+                        questionSelect.appendChild(option);
+                    });
+                    questionSelect.value = q.qNum;
+
+                    // Draw radar
+                    drawRadar(q);
+
+                    currentPlayIndex++;
+                }
+
+                playNext(); // Play first immediately
+                autoPlayInterval = setInterval(playNext, frameMs);
+            }
+        });
+    </script>
+</body>
+</html>
