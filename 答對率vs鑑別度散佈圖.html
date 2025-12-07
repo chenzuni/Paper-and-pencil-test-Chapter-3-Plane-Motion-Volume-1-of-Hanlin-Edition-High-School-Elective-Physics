@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>答對率 vs 鑑別度散佈圖 - 5人物理考卷</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .chart-container {
+            margin: 20px 0;
+            display: flex;
+            justify-content: center;
+        }
+        .axis-label {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .dot {
+            stroke-width: 2;
+            stroke: white;
+            cursor: pointer;
+            transition: r 0.2s;
+        }
+        .dot:hover {
+            r: 10;
+        }
+        .dot-single { fill: #2196F3; }
+        .dot-multi { fill: #FF9800; }
+        .dot-group { fill: #9C27B0; }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            max-width: 200px;
+        }
+        .grid line {
+            stroke: #e0e0e0;
+            stroke-opacity: 0.7;
+            shape-rendering: crispEdges;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-bottom: 20px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 14px;
+        }
+        .legend-dot {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+        }
+        .zero-line {
+            stroke: #999;
+            stroke-width: 1;
+            stroke-dasharray: 5,5;
+        }
+        .quadrant-label {
+            font-size: 11px;
+            fill: #999;
+            font-style: italic;
+        }
+        .ideal-zone {
+            fill: #4CAF50;
+            opacity: 0.08;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>答對率 vs 鑑別度散佈圖 - 5人物理考卷</h1>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #2196F3;"></div>
+                <span>單選題</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #FF9800;"></div>
+                <span>多選題</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-dot" style="background: #9C27B0;"></div>
+                <span>題組</span>
+            </div>
+        </div>
+        
+        <div class="chart-container" id="chart"></div>
+        
+        <div style="text-align: center; color: #666; font-size: 13px; margin-top: 10px;">
+            理想題目：答對率 40-80%，鑑別度 ≥ 20
+        </div>
+    </div>
+    
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // Data from 答對率及鑑別度表_5人物理考卷.csv
+        const data = [
+            // 單選題 (大題1)
+            { section: "單選", qNum: 1, label: "1", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "單選", qNum: 2, label: "2", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "單選", qNum: 3, label: "3", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "單選", qNum: 4, label: "4", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "單選", qNum: 5, label: "5", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "單選", qNum: 6, label: "6", P: 80, D: 50, Ph: 100, Pl: 50 },
+            { section: "單選", qNum: 7, label: "7", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "單選", qNum: 8, label: "8", P: 80, D: 50, Ph: 100, Pl: 50 },
+            { section: "單選", qNum: 9, label: "9", P: 80, D: 50, Ph: 100, Pl: 50 },
+            { section: "單選", qNum: 10, label: "10", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "單選", qNum: 11, label: "11", P: 0, D: 0, Ph: 0, Pl: 0 },
+            { section: "單選", qNum: 12, label: "12", P: 40, D: 0, Ph: 50, Pl: 50 },
+            { section: "單選", qNum: 13, label: "13", P: 0, D: 0, Ph: 0, Pl: 0 },
+            { section: "單選", qNum: 14, label: "14", P: 40, D: 50, Ph: 50, Pl: 0 },
+            // 多選題 (大題2)
+            { section: "多選", qNum: 1, label: "*1", P: 92, D: 20, Ph: 100, Pl: 80 },
+            { section: "多選", qNum: 2, label: "*2", P: 84, D: 20, Ph: 100, Pl: 80 },
+            { section: "多選", qNum: 3, label: "*3", P: 76, D: -20, Ph: 60, Pl: 80 },
+            { section: "多選", qNum: 4, label: "*4", P: 44, D: 0, Ph: 50, Pl: 50 },
+            { section: "多選", qNum: 5, label: "*5", P: 16, D: -10, Ph: 10, Pl: 20 },
+            { section: "多選", qNum: 6, label: "*6", P: 76, D: 0, Ph: 80, Pl: 80 },
+            { section: "多選", qNum: 7, label: "*7", P: 52, D: 20, Ph: 60, Pl: 40 },
+            // 題組 (大題3)
+            { section: "題組", qNum: 1, label: "1", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "題組", qNum: 2, label: "2", P: 40, D: 50, Ph: 50, Pl: 0 },
+            { section: "題組", qNum: 3, label: "3", P: 60, D: 0, Ph: 50, Pl: 50 },
+            { section: "題組", qNum: 4, label: "4", P: 80, D: 50, Ph: 100, Pl: 50 },
+            { section: "題組", qNum: 5, label: "5", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "題組", qNum: 6, label: "6", P: 80, D: 50, Ph: 100, Pl: 50 },
+            { section: "題組", qNum: 7, label: "7", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "題組", qNum: 8, label: "8", P: 100, D: 0, Ph: 100, Pl: 100 },
+            { section: "題組", qNum: 9, label: "9", P: 20, D: 50, Ph: 50, Pl: 0 },
+            { section: "題組", qNum: 10, label: "10", P: 40, D: 0, Ph: 50, Pl: 50 },
+            { section: "題組", qNum: 11, label: "11", P: 40, D: 0, Ph: 50, Pl: 50 },
+            { section: "題組", qNum: 12, label: "12", P: 20, D: 50, Ph: 50, Pl: 0 }
+        ];
+
+        // Set up dimensions
+        const margin = { top: 30, right: 30, bottom: 60, left: 60 };
+        const width = 700 - margin.left - margin.right;
+        const height = 600 - margin.top - margin.bottom;
+
+        // Create SVG
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // X scale (答對率 0-100)
+        const x = d3.scaleLinear()
+            .domain([0, 100])
+            .range([0, width]);
+
+        // Y scale (鑑別度 -30 to 60)
+        const y = d3.scaleLinear()
+            .domain([-30, 60])
+            .range([height, 0]);
+
+        // Add ideal zone (答對率 40-80%, 鑑別度 >= 20)
+        svg.append("rect")
+            .attr("class", "ideal-zone")
+            .attr("x", x(40))
+            .attr("y", y(60))
+            .attr("width", x(80) - x(40))
+            .attr("height", y(20) - y(60));
+
+        // Add grid lines
+        svg.append("g")
+            .attr("class", "grid")
+            .selectAll("line.horizontal")
+            .data([-20, 0, 20, 40, 60])
+            .enter()
+            .append("line")
+            .attr("x1", 0)
+            .attr("x2", width)
+            .attr("y1", d => y(d))
+            .attr("y2", d => y(d));
+
+        svg.append("g")
+            .attr("class", "grid")
+            .selectAll("line.vertical")
+            .data([0, 20, 40, 60, 80, 100])
+            .enter()
+            .append("line")
+            .attr("x1", d => x(d))
+            .attr("x2", d => x(d))
+            .attr("y1", 0)
+            .attr("y2", height);
+
+        // Zero line for D
+        svg.append("line")
+            .attr("class", "zero-line")
+            .attr("x1", 0)
+            .attr("x2", width)
+            .attr("y1", y(0))
+            .attr("y2", y(0))
+            .attr("stroke", "#333")
+            .attr("stroke-width", 1.5)
+            .attr("stroke-dasharray", "none");
+
+        // Quadrant labels
+        svg.append("text")
+            .attr("class", "quadrant-label")
+            .attr("x", x(10))
+            .attr("y", y(55))
+            .text("難且鑑別佳");
+
+        svg.append("text")
+            .attr("class", "quadrant-label")
+            .attr("x", x(85))
+            .attr("y", y(55))
+            .text("易且鑑別佳");
+
+        svg.append("text")
+            .attr("class", "quadrant-label")
+            .attr("x", x(10))
+            .attr("y", y(-25))
+            .text("難且無鑑別");
+
+        svg.append("text")
+            .attr("class", "quadrant-label")
+            .attr("x", x(85))
+            .attr("y", y(-25))
+            .text("易且無鑑別");
+
+        // X axis
+        svg.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).tickFormat(d => d + "%"));
+
+        // Y axis
+        svg.append("g")
+            .call(d3.axisLeft(y));
+
+        // Axis labels
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width / 2)
+            .attr("y", height + 45)
+            .attr("text-anchor", "middle")
+            .text("答對率 / 得分率 (%)");
+
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -45)
+            .attr("text-anchor", "middle")
+            .text("鑑別度 (D)");
+
+        // Tooltip
+        const tooltip = d3.select("#tooltip");
+
+        function showTooltip(event, d) {
+            let quality = "";
+            if (d.P >= 40 && d.P <= 80 && d.D >= 20) {
+                quality = "✓ 理想題目";
+            } else if (d.D < 0) {
+                quality = "⚠ 負鑑別（需檢視）";
+            } else if (d.P >= 90) {
+                quality = "太簡單";
+            } else if (d.P <= 20) {
+                quality = "太困難";
+            } else if (d.D < 20) {
+                quality = "鑑別度不足";
+            }
+
+            tooltip
+                .style("opacity", 1)
+                .html(`
+                    <strong>${d.section} 第${d.label.replace('*', '')}題</strong><br>
+                    答對率: ${d.P}%<br>
+                    鑑別度: ${d.D}<br>
+                    <small>Ph=${d.Ph}%, Pl=${d.Pl}%</small><br>
+                    ${quality ? `<span style="color: ${d.D >= 20 && d.P >= 40 && d.P <= 80 ? '#4CAF50' : '#FFB74D'}">${quality}</span>` : ''}
+                `)
+                .style("left", (event.pageX + 15) + "px")
+                .style("top", (event.pageY - 30) + "px");
+        }
+
+        function hideTooltip() {
+            tooltip.style("opacity", 0);
+        }
+
+        // Add jitter to avoid overlapping points
+        function jitter(value, amount = 2) {
+            return value + (Math.random() - 0.5) * amount;
+        }
+
+        // Draw dots
+        svg.selectAll(".dot")
+            .data(data)
+            .enter()
+            .append("circle")
+            .attr("class", d => {
+                if (d.section === "單選") return "dot dot-single";
+                if (d.section === "多選") return "dot dot-multi";
+                return "dot dot-group";
+            })
+            .attr("cx", d => x(jitter(d.P, 3)))
+            .attr("cy", d => y(jitter(d.D, 2)))
+            .attr("r", 7)
+            .on("mouseover", (event, d) => showTooltip(event, d))
+            .on("mouseout", hideTooltip);
+
+        // Add labels for some notable points
+        const notablePoints = data.filter(d => d.D < 0 || (d.D >= 50 && d.P <= 50));
+        
+        svg.selectAll(".point-label")
+            .data(notablePoints)
+            .enter()
+            .append("text")
+            .attr("class", "point-label")
+            .attr("x", d => x(d.P) + 10)
+            .attr("y", d => y(d.D) + 4)
+            .attr("font-size", "10px")
+            .attr("fill", "#666")
+            .text(d => d.label);
+    </script>
+</body>
+</html>
