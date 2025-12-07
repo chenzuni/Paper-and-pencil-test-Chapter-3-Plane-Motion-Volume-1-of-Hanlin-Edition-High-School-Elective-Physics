@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>認知層次 × 鑑別度 分布圖</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=Noto+Sans+TC:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at 25% 20%, #f4f6fb, #ffffff 60%);
+            font-family: "Space Grotesk", "Noto Sans TC", sans-serif;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        .panel {
+            width: min(1180px, 100%);
+            background: #fff;
+            border-radius: 20px;
+            padding: 32px 40px 40px;
+            box-shadow: 0 24px 60px rgba(15,23,42,0.12);
+            border: 1px solid rgba(15,23,42,0.06);
+        }
+        h1 {
+            margin: 0;
+            text-align: center;
+            font-size: 30px;
+            letter-spacing: 0.04em;
+            color: #111827;
+        }
+        .subtitle {
+            text-align: center;
+            color: #4b5563;
+            font-size: 14px;
+            margin: 8px 0 24px;
+        }
+        #chart {
+            position: relative;
+            overflow-x: auto;
+        }
+        svg text {
+            font-family: "Noto Sans TC", sans-serif;
+        }
+        .axis-label {
+            fill: #1f2937;
+            font-weight: 600;
+        }
+        .x-label { text-anchor: middle; }
+        .y-label { text-anchor: middle; }
+        .grid line {
+            stroke: rgba(15,23,42,0.08);
+            stroke-dasharray: 4 4;
+        }
+        .zero-line {
+            stroke: #94a3b8;
+            stroke-width: 2;
+        }
+        .point {
+            stroke: #ffffff;
+            stroke-width: 1.5;
+        }
+        .avg-dot {
+            stroke: #0f172a;
+            stroke-width: 2;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 14px;
+            border-radius: 10px;
+            border: 1px solid rgba(15,23,42,0.08);
+            box-shadow: 0 14px 35px rgba(15,23,42,0.15);
+            pointer-events: none;
+            font-size: 13px;
+            color: #111827;
+            opacity: 0;
+            transform: translate(-50%, -120%);
+            transition: opacity 0.15s ease;
+        }
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 14px 28px;
+            margin-top: 20px;
+            color: #4b5563;
+            font-size: 13px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legend-swatch {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+        }
+        .note {
+            margin-top: 18px;
+            font-size: 12px;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+        .note strong { color: #2563eb; }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h1>認知層次 × 鑑別度 分布圖</h1>
+        <p class="subtitle">X 軸：認知層次　｜　Y 軸：鑑別度 D = Ph − Pl　｜　資料來源：5人物理考卷</p>
+        <div id="chart"></div>
+        <div class="legend" id="legend"></div>
+        <div class="note">
+            <strong>註：</strong> 依雙向細目表將題目配對至各認知層次，點顏色表示題型（單選／多選／題組）。同一層次多題時，點會做隨機水平抖動以避免重疊。
+        </div>
+    </div>
+
+    <script>
+        const levelOrder = ['記憶', '理解', '應用', '分析', '評鑑', '創造'];
+        const typeColors = {
+            '單選題': '#2563eb',
+            '多選題': '#f97316',
+            '題組題': '#10b981'
+        };
+
+        const questionData = [
+            // 單選題 (大題1)
+            { id: 'Q1', label: '第1題', level: '應用', type: '單選題', D: 0 },
+            { id: 'Q2', label: '第2題', level: '記憶', type: '單選題', D: 0 },
+            { id: 'Q3', label: '第3題', level: '記憶', type: '單選題', D: 0 },
+            { id: 'Q4', label: '第4題', level: '記憶', type: '單選題', D: 0 },
+            { id: 'Q5', label: '第5題', level: '記憶', type: '單選題', D: 0 },
+            { id: 'Q6', label: '第6題', level: '記憶', type: '單選題', D: 50 },
+            { id: 'Q7', label: '第7題', level: '記憶', type: '單選題', D: 0 },
+            { id: 'Q8', label: '第8題', level: '理解', type: '單選題', D: 50 },
+            { id: 'Q9', label: '第9題', level: '理解', type: '單選題', D: 50 },
+            { id: 'Q10', label: '第10題', level: '理解', type: '單選題', D: 0 },
+            { id: 'Q11', label: '第11題', level: '理解', type: '單選題', D: 0 },
+            { id: 'Q12', label: '第12題', level: '應用', type: '單選題', D: 0 },
+            { id: 'Q13', label: '第13題', level: '應用', type: '單選題', D: 0 },
+            { id: 'Q14', label: '第14題', level: '應用', type: '單選題', D: 50 },
+            // 多選題 (大題2)
+            { id: '*1', label: '多選1', level: '記憶', type: '多選題', D: 20 },
+            { id: '*2', label: '多選2', level: '記憶', type: '多選題', D: 20 },
+            { id: '*3', label: '多選3', level: '理解', type: '多選題', D: -20 },
+            { id: '*4', label: '多選4', level: '理解', type: '多選題', D: 0 },
+            { id: '*5', label: '多選5', level: '理解', type: '多選題', D: -10 },
+            { id: '*6', label: '多選6', level: '應用', type: '多選題', D: 0 },
+            { id: '*7', label: '多選7', level: '應用', type: '多選題', D: 20 },
+            // 題組題 (大題3)
+            { id: 'T1', label: '題組1', level: '應用', type: '題組題', D: 0 },
+            { id: 'T2', label: '題組2', level: '分析', type: '題組題', D: 50 },
+            { id: 'T3', label: '題組3', level: '記憶', type: '題組題', D: 0 },
+            { id: 'T4', label: '題組4', level: '理解', type: '題組題', D: 50 },
+            { id: 'T5', label: '題組5', level: '理解', type: '題組題', D: 0 },
+            { id: 'T6', label: '題組6', level: '理解', type: '題組題', D: 50 },
+            { id: 'T7', label: '題組7', level: '理解', type: '題組題', D: 0 },
+            { id: 'T8', label: '題組8', level: '理解', type: '題組題', D: 0 },
+            { id: 'T9', label: '題組9', level: '應用', type: '題組題', D: 50 },
+            { id: 'T10', label: '題組10', level: '應用', type: '題組題', D: 0 },
+            { id: 'T11', label: '題組11', level: '應用', type: '題組題', D: 0 },
+            { id: 'T12', label: '題組12', level: '應用', type: '題組題', D: 50 }
+        ];
+
+        const margin = { top: 60, right: 40, bottom: 70, left: 70 };
+        const width = 960 - margin.left - margin.right;
+        const height = 520 - margin.top - margin.bottom;
+        const jitter = 28;
+
+        const svg = d3.select('#chart')
+            .append('svg')
+            .attr('width', width + margin.left + margin.right)
+            .attr('height', height + margin.top + margin.bottom)
+            .append('g')
+            .attr('transform', `translate(${margin.left},${margin.top})`);
+
+        const x = d3.scaleBand()
+            .domain(levelOrder)
+            .range([0, width])
+            .padding(0.25);
+
+        const y = d3.scaleLinear()
+            .domain([-30, 60])
+            .nice()
+            .range([height, 0]);
+
+        svg.append('g')
+            .attr('class', 'grid')
+            .attr('transform', `translate(0,0)`)
+            .call(d3.axisLeft(y)
+                .tickSize(-width)
+                .tickFormat(() => ''));
+
+        svg.append('line')
+            .attr('class', 'zero-line')
+            .attr('x1', 0)
+            .attr('x2', width)
+            .attr('y1', y(0))
+            .attr('y2', y(0));
+
+        svg.append('g')
+            .attr('transform', `translate(0,${height})`)
+            .call(d3.axisBottom(x))
+            .selectAll('text')
+            .style('font-weight', '600');
+
+        svg.append('g')
+            .call(d3.axisLeft(y));
+
+        svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('x', width / 2)
+            .attr('y', height + 50)
+            .text('認知層次');
+
+        svg.append('text')
+            .attr('class', 'axis-label')
+            .attr('transform', 'rotate(-90)')
+            .attr('x', -height / 2)
+            .attr('y', -50)
+            .text('鑑別度 D (Ph − Pl)');
+
+        const tooltip = d3.select('#chart')
+            .append('div')
+            .attr('class', 'tooltip');
+
+        svg.selectAll('.point')
+            .data(questionData)
+            .enter()
+            .append('circle')
+            .attr('class', 'point')
+            .attr('r', 8)
+            .attr('cx', d => x(d.level) + x.bandwidth() / 2 + (Math.random() - 0.5) * jitter)
+            .attr('cy', d => y(d.D))
+            .attr('fill', d => typeColors[d.type])
+            .on('mousemove', (event, d) => {
+                tooltip.style('opacity', 1)
+                    .html(`
+                        <strong>${d.label}</strong><br>
+                        題型：${d.type}<br>
+                        認知層次：${d.level}<br>
+                        鑑別度 D：${d.D}
+                    `)
+                    .style('left', `${event.offsetX + 12}px`)
+                    .style('top', `${event.offsetY - 18}px`);
+            })
+            .on('mouseleave', () => tooltip.style('opacity', 0));
+
+        const levelSummary = d3.rollup(
+            questionData,
+            values => ({ avg: d3.mean(values, d => d.D), count: values.length }),
+            d => d.level
+        );
+
+        svg.selectAll('.avg-dot')
+            .data(levelOrder.filter(levelSummary.has).map(level => ({
+                level,
+                avg: levelSummary.get(level).avg,
+                count: levelSummary.get(level).count
+            })))
+            .enter()
+            .append('circle')
+            .attr('class', 'avg-dot')
+            .attr('r', 6)
+            .attr('fill', '#facc15')
+            .attr('cx', d => x(d.level) + x.bandwidth() / 2)
+            .attr('cy', d => y(d.avg))
+            .append('title')
+            .text(d => `${d.level} 平均 D：${d.avg.toFixed(1)}（${d.count} 題）`);
+
+        const legend = d3.select('#legend');
+        Object.entries(typeColors).forEach(([type, color]) => {
+            legend.append('div')
+                .attr('class', 'legend-item')
+                .html(`<span class="legend-swatch" style="background:${color}"></span>${type}`);
+        });
+        legend.append('div')
+            .attr('class', 'legend-item')
+            .html('<span class="legend-swatch" style="background:#facc15; border:2px solid #0f172a; border-radius:50%;"></span>層次平均鑑別度');
+    </script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>鑑別度分布圖 - 5人物理考卷</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            margin: 0;
+            background: radial-gradient(circle at top, #fefefe 0%, #f0f0f5 45%, #e0e4ef 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        .card {
+            background: white;
+            width: min(1100px, 100%);
+            border-radius: 18px;
+            padding: 32px 40px 40px;
+            box-shadow: 0 25px 60px rgba(79, 114, 205, 0.2);
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 6px;
+            letter-spacing: 0.08em;
+            color: #222b45;
+        }
+        .subtitle {
+            text-align: center;
+            color: #5b6b92;
+            font-size: 14px;
+            margin-bottom: 30px;
+        }
+        #chart {
+            position: relative;
+        }
+        .tooltip {
+            position: absolute;
+            pointer-events: none;
+            background: rgba(22, 30, 56, 0.9);
+            color: white;
+            padding: 6px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            opacity: 0;
+            transform: translate(-50%, -100%);
+            transition: opacity 0.15s ease;
+        }
+        .axis-label {
+            font-size: 14px;
+            font-weight: bold;
+            fill: #333c5e;
+        }
+        .bar {
+            fill: url(#barGradient);
+        }
+        .bar:hover {
+            fill: #ffb347;
+        }
+        .bar-value {
+            font-size: 12px;
+            fill: #2c2c2c;
+        }
+        .baseline {
+            stroke: #95a2c5;
+            stroke-dasharray: 4 4;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>鑑別度分布圖</h1>
+        <p class="subtitle">X 軸：鑑別度區間　｜　Y 軸：題目數（共 33 題）</p>
+        <div class="chart" id="chart"></div>
+    </div>
+
+    <script>
+        const rawData = [
+            // 單選題 (大題1)
+            { section: "單選", label: "1", D: 0 },
+            { section: "單選", label: "2", D: 0 },
+            { section: "單選", label: "3", D: 0 },
+            { section: "單選", label: "4", D: 0 },
+            { section: "單選", label: "5", D: 0 },
+            { section: "單選", label: "6", D: 50 },
+            { section: "單選", label: "7", D: 0 },
+            { section: "單選", label: "8", D: 50 },
+            { section: "單選", label: "9", D: 50 },
+            { section: "單選", label: "10", D: 0 },
+            { section: "單選", label: "11", D: 0 },
+            { section: "單選", label: "12", D: 0 },
+            { section: "單選", label: "13", D: 0 },
+            { section: "單選", label: "14", D: 50 },
+            // 多選題 (大題2)
+            { section: "多選", label: "*1", D: 20 },
+            { section: "多選", label: "*2", D: 20 },
+            { section: "多選", label: "*3", D: -20 },
+            { section: "多選", label: "*4", D: 0 },
+            { section: "多選", label: "*5", D: -10 },
+            { section: "多選", label: "*6", D: 0 },
+            { section: "多選", label: "*7", D: 20 },
+            // 題組 (大題3)
+            { section: "題組", label: "1", D: 0 },
+            { section: "題組", label: "2", D: 50 },
+            { section: "題組", label: "3", D: 0 },
+            { section: "題組", label: "4", D: 50 },
+            { section: "題組", label: "5", D: 0 },
+            { section: "題組", label: "6", D: 50 },
+            { section: "題組", label: "7", D: 0 },
+            { section: "題組", label: "8", D: 0 },
+            { section: "題組", label: "9", D: 50 },
+            { section: "題組", label: "10", D: 0 },
+            { section: "題組", label: "11", D: 0 },
+            { section: "題組", label: "12", D: 50 }
+        ];
+
+        const values = rawData.map(d => d.D);
+
+        const margin = { top: 30, right: 40, bottom: 70, left: 70 };
+        const width = 960 - margin.left - margin.right;
+        const height = 480 - margin.top - margin.bottom;
+
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        const defs = svg.append("defs");
+        const gradient = defs.append("linearGradient")
+            .attr("id", "barGradient")
+            .attr("x1", "0%")
+            .attr("x2", "0%")
+            .attr("y1", "0%")
+            .attr("y2", "100%");
+
+        gradient.append("stop").attr("offset", "0%").attr("stop-color", "#ffdf85");
+        gradient.append("stop").attr("offset", "100%").attr("stop-color", "#f6a54c");
+
+        const x = d3.scaleLinear()
+            .domain([-20, 60])
+            .range([0, width]);
+
+        const bins = d3.bin()
+            .domain(x.domain())
+            .thresholds(d3.range(-20, 70, 10))(values);
+
+        const y = d3.scaleLinear()
+            .domain([0, d3.max(bins, d => d.length) || 1])
+            .nice()
+            .range([height, 0]);
+
+        svg.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x).tickFormat(d3.format("d")));
+
+        svg.append("g")
+            .call(d3.axisLeft(y).ticks(6).tickFormat(d3.format("d")));
+
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width / 2)
+            .attr("y", height + 50)
+            .attr("text-anchor", "middle")
+            .text("鑑別度區間 (D)");
+
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -45)
+            .attr("text-anchor", "middle")
+            .text("題目數");
+
+        const tooltip = d3.select("#chart")
+            .append("div")
+            .attr("class", "tooltip");
+
+        svg.selectAll(".bar")
+            .data(bins)
+            .enter()
+            .append("rect")
+            .attr("class", "bar")
+            .attr("x", d => x(d.x0) + 1)
+            .attr("y", d => y(d.length))
+            .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 2))
+            .attr("height", d => height - y(d.length))
+            .on("mouseenter", (event, d) => {
+                const label = `${d.x0} ~ ${d.x1}`;
+                tooltip.style("opacity", 1)
+                    .html(`<strong>${label}</strong><br>題目數：${d.length}`)
+                    .style("left", `${event.offsetX}px`)
+                    .style("top", `${event.offsetY - 15}px`);
+            })
+            .on("mouseleave", () => tooltip.style("opacity", 0));
+
+        svg.selectAll(".bar-value")
+            .data(bins)
+            .enter()
+            .append("text")
+            .attr("class", "bar-value")
+            .attr("text-anchor", "middle")
+            .attr("x", d => x(d.x0) + (x(d.x1) - x(d.x0)) / 2)
+            .attr("y", d => y(d.length) - 6)
+            .text(d => d.length > 0 ? d.length : "");
+
+        const zones = [
+            { label: "優良 (≥30)", color: "rgba(40, 199, 111, 0.08)", from: 30, to: 60 },
+            { label: "尚可 (≥20)", color: "rgba(255, 193, 7, 0.08)", from: 20, to: 30 }
+        ];
+
+        svg.selectAll(".zone")
+            .data(zones)
+            .enter()
+            .append("rect")
+            .attr("class", "zone")
+            .attr("x", d => x(d.from))
+            .attr("y", 0)
+            .attr("width", d => x(d.to) - x(d.from))
+            .attr("height", height)
+            .attr("fill", d => d.color)
+            .lower();
+
+        svg.selectAll(".zone-label")
+            .data(zones)
+            .enter()
+            .append("text")
+            .attr("class", "zone-label")
+            .attr("x", d => x(d.from) + 8)
+            .attr("y", 20)
+            .attr("fill", "#4a5568")
+            .attr("font-size", 12)
+            .text(d => d.label);
+    </script>
+</body>
+</html>

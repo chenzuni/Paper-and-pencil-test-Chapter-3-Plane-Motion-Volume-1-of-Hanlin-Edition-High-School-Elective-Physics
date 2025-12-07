@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>題目難易度分布圖 - 5人物理考卷</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 20px;
+        }
+        .chart-container {
+            display: flex;
+            justify-content: center;
+        }
+        .bar {
+            transition: opacity 0.2s;
+        }
+        .bar:hover {
+            opacity: 0.8;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(0,0,0,0.85);
+            color: white;
+            padding: 10px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            max-width: 300px;
+        }
+        .axis-label {
+            font-size: 14px;
+            font-weight: bold;
+        }
+        .legend {
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 13px;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+        .difficulty-label {
+            font-size: 11px;
+            fill: #666;
+        }
+        .stats {
+            text-align: center;
+            margin-top: 15px;
+            color: #555;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>題目難易度分布圖 - 5人物理考卷</h1>
+        <p class="subtitle">X軸：答對率區間 | Y軸：題目數量</p>
+        
+        <div class="chart-container" id="chart"></div>
+        
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #2196F3;"></div>
+                <span>單選題</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4CAF50;"></div>
+                <span>多選題</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #FF9800;"></div>
+                <span>題組</span>
+            </div>
+        </div>
+        
+        <div class="stats" id="stats"></div>
+    </div>
+    
+    <div class="tooltip" id="tooltip"></div>
+
+    <script>
+        // 答對率數據 (P值，百分比)
+        const questionData = [
+            // 單選題 1-14
+            { qNum: "1", section: "單選", P: 100 },
+            { qNum: "2", section: "單選", P: 100 },
+            { qNum: "3", section: "單選", P: 100 },
+            { qNum: "4", section: "單選", P: 100 },
+            { qNum: "5", section: "單選", P: 100 },
+            { qNum: "6", section: "單選", P: 80 },
+            { qNum: "7", section: "單選", P: 100 },
+            { qNum: "8", section: "單選", P: 80 },
+            { qNum: "9", section: "單選", P: 80 },
+            { qNum: "10", section: "單選", P: 100 },
+            { qNum: "11", section: "單選", P: 0 },
+            { qNum: "12", section: "單選", P: 40 },
+            { qNum: "13", section: "單選", P: 0 },
+            { qNum: "14", section: "單選", P: 40 },
+            // 多選題 *1-*7
+            { qNum: "*1", section: "多選", P: 92 },
+            { qNum: "*2", section: "多選", P: 84 },
+            { qNum: "*3", section: "多選", P: 76 },
+            { qNum: "*4", section: "多選", P: 44 },
+            { qNum: "*5", section: "多選", P: 16 },
+            { qNum: "*6", section: "多選", P: 76 },
+            { qNum: "*7", section: "多選", P: 52 },
+            // 題組 1-12
+            { qNum: "1", section: "題組", P: 100 },
+            { qNum: "2", section: "題組", P: 40 },
+            { qNum: "3", section: "題組", P: 60 },
+            { qNum: "4", section: "題組", P: 80 },
+            { qNum: "5", section: "題組", P: 100 },
+            { qNum: "6", section: "題組", P: 80 },
+            { qNum: "7", section: "題組", P: 100 },
+            { qNum: "8", section: "題組", P: 100 },
+            { qNum: "9", section: "題組", P: 20 },
+            { qNum: "10", section: "題組", P: 40 },
+            { qNum: "11", section: "題組", P: 40 },
+            { qNum: "12", section: "題組", P: 20 }
+        ];
+
+        // 設定
+        const margin = { top: 40, right: 40, bottom: 80, left: 60 };
+        const width = 800 - margin.left - margin.right;
+        const height = 450 - margin.top - margin.bottom;
+
+        // 定義區間 (0-10, 10-20, ..., 90-100)
+        const bins = [
+            { range: "0-10", min: 0, max: 10 },
+            { range: "10-20", min: 10, max: 20 },
+            { range: "20-30", min: 20, max: 30 },
+            { range: "30-40", min: 30, max: 40 },
+            { range: "40-50", min: 40, max: 50 },
+            { range: "50-60", min: 50, max: 60 },
+            { range: "60-70", min: 60, max: 70 },
+            { range: "70-80", min: 70, max: 80 },
+            { range: "80-90", min: 80, max: 90 },
+            { range: "90-100", min: 90, max: 101 } // 101 to include 100
+        ];
+
+        // 計算每個區間的題目數（按題型分類）
+        const sections = ["單選", "多選", "題組"];
+        const sectionColors = {
+            "單選": "#2196F3",
+            "多選": "#4CAF50",
+            "題組": "#FF9800"
+        };
+
+        bins.forEach(bin => {
+            bin.questions = questionData.filter(q => q.P >= bin.min && q.P < bin.max);
+            bin.count = bin.questions.length;
+            // 按題型分類
+            bin.bySection = {};
+            sections.forEach(sec => {
+                bin.bySection[sec] = bin.questions.filter(q => q.section === sec);
+            });
+        });
+
+        // 建立 SVG
+        const svg = d3.select("#chart")
+            .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+            .append("g")
+            .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        // X 軸
+        const x = d3.scaleBand()
+            .domain(bins.map(b => b.range))
+            .range([0, width])
+            .padding(0.15);
+
+        svg.append("g")
+            .attr("transform", `translate(0,${height})`)
+            .call(d3.axisBottom(x))
+            .selectAll("text")
+            .attr("transform", "rotate(-30)")
+            .style("text-anchor", "end")
+            .attr("dx", "-0.5em")
+            .attr("dy", "0.5em");
+
+        // X 軸標籤
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("x", width / 2)
+            .attr("y", height + 65)
+            .attr("text-anchor", "middle")
+            .text("答對率區間 (%)");
+
+        // Y 軸
+        const maxCount = d3.max(bins, b => b.count);
+        const y = d3.scaleLinear()
+            .domain([0, Math.max(maxCount + 1, 5)])
+            .range([height, 0]);
+
+        svg.append("g")
+            .call(d3.axisLeft(y).ticks(Math.min(maxCount + 1, 10)).tickFormat(d3.format("d")));
+
+        // Y 軸標籤
+        svg.append("text")
+            .attr("class", "axis-label")
+            .attr("transform", "rotate(-90)")
+            .attr("x", -height / 2)
+            .attr("y", -45)
+            .attr("text-anchor", "middle")
+            .text("題目數量");
+
+        // Tooltip
+        const tooltip = d3.select("#tooltip");
+
+        // 繪製疊加式長條
+        bins.forEach(bin => {
+            let cumY = 0; // 累積高度
+            
+            sections.forEach(sec => {
+                const count = bin.bySection[sec].length;
+                if (count === 0) return;
+                
+                const barHeight = height - y(count);
+                const yPos = y(cumY + count);
+                
+                svg.append("rect")
+                    .attr("class", "bar")
+                    .attr("x", x(bin.range))
+                    .attr("y", yPos)
+                    .attr("width", x.bandwidth())
+                    .attr("height", barHeight)
+                    .attr("fill", sectionColors[sec])
+                    .attr("stroke", "#fff")
+                    .attr("stroke-width", 1)
+                    .on("mouseover", (event) => {
+                        const questionList = bin.bySection[sec].map(q => 
+                            `${q.section}${q.qNum} (${q.P}%)`
+                        ).join("<br>");
+                        
+                        tooltip
+                            .style("opacity", 1)
+                            .html(`
+                                <strong>答對率區間：${bin.range}%</strong><br>
+                                題型：${sec}題<br>
+                                題數：${count} 題<br>
+                                <hr style="margin:5px 0;border-color:#555">
+                                ${questionList}
+                            `)
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 30) + "px");
+                    })
+                    .on("mousemove", (event) => {
+                        tooltip
+                            .style("left", (event.pageX + 10) + "px")
+                            .style("top", (event.pageY - 30) + "px");
+                    })
+                    .on("mouseout", () => {
+                        tooltip.style("opacity", 0);
+                    });
+                
+                cumY += count;
+            });
+        });
+
+        // 在長條上方顯示總數
+        svg.selectAll(".count-label")
+            .data(bins)
+            .enter()
+            .append("text")
+            .attr("class", "count-label")
+            .attr("x", d => x(d.range) + x.bandwidth() / 2)
+            .attr("y", d => y(d.count) - 5)
+            .attr("text-anchor", "middle")
+            .attr("font-size", "12px")
+            .attr("font-weight", "bold")
+            .attr("fill", "#333")
+            .text(d => d.count > 0 ? d.count : "");
+
+        // 統計資訊
+        const totalQuestions = questionData.length;
+        const avgP = (questionData.reduce((sum, q) => sum + q.P, 0) / totalQuestions).toFixed(1);
+        const singleCount = questionData.filter(q => q.section === "單選").length;
+        const multiCount = questionData.filter(q => q.section === "多選").length;
+        const groupCount = questionData.filter(q => q.section === "題組").length;
+
+        document.getElementById("stats").innerHTML = `
+            總題數：${totalQuestions} 題 | 
+            平均答對率：${avgP}% | 
+            單選題：${singleCount} 題 | 
+            多選題：${multiCount} 題 | 
+            題組：${groupCount} 題
+        `;
+    </script>
+</body>
+</html>

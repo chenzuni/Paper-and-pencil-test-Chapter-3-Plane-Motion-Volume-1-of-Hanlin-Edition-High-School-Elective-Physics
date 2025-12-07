@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>章節 × 認知層次 × 難度熱力圖</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600&family=Noto+Sans+TC:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #ffffff;
+            --card: #ffffff;
+            --accent: #2563eb;
+            --grid: rgba(15,23,42,0.08);
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(circle at 30% 20%, #f4f6fb, #ffffff 60%);
+            font-family: "Space Grotesk", "Noto Sans TC", sans-serif;
+            color: #0f172a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+        }
+        .panel {
+            width: min(1200px, 100%);
+            background: var(--card);
+            border-radius: 20px;
+            padding: 32px 40px 48px;
+            box-shadow: 0 25px 65px rgba(15,23,42,0.12);
+            border: 1px solid rgba(15,23,42,0.06);
+        }
+        h1 {
+            margin: 0;
+            text-align: center;
+            letter-spacing: 0.05em;
+            font-size: 28px;
+            color: #111827;
+        }
+        .subtitle {
+            text-align: center;
+            color: #4b5563;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        .chart-section {
+            margin-top: 28px;
+            padding: 24px 0 12px;
+            border-top: 1px dashed rgba(15,23,42,0.08);
+        }
+        .chart-section:first-of-type {
+            border-top: none;
+            padding-top: 0;
+        }
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 12px;
+        }
+        .section-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: #111827;
+        }
+        .section-header p {
+            margin: 4px 0 0;
+            color: #6b7280;
+            font-size: 13px;
+        }
+        .chart-wrapper {
+            position: relative;
+            overflow-x: auto;
+        }
+        svg text {
+            font-family: "Noto Sans TC", sans-serif;
+        }
+        .axis-label {
+            fill: #1f2937;
+            font-weight: 600;
+        }
+        .x-label {
+            text-anchor: middle;
+        }
+        .y-label {
+            text-anchor: end;
+        }
+        .cell-value {
+            fill: #111827;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .cell-sub {
+            fill: rgba(31,41,55,0.7);
+            font-size: 11px;
+        }
+        .tooltip {
+            position: absolute;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 14px;
+            border-radius: 10px;
+            font-size: 13px;
+            color: #111827;
+            pointer-events: none;
+            opacity: 0;
+            transform: translate(-50%, -120%);
+            transition: opacity 0.15s ease;
+            border: 1px solid rgba(15,23,42,0.1);
+            box-shadow: 0 12px 30px rgba(15,23,42,0.12);
+        }
+        .legend {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 24px;
+            color: #4b5563;
+            font-size: 13px;
+        }
+        .legend-bar {
+            height: 10px;
+            flex: 1;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #c53030 0%, #f6e05e 50%, #38a169 100%);
+        }
+        .note {
+            margin-top: 18px;
+            font-size: 12px;
+            color: #4b5563;
+            line-height: 1.6;
+        }
+        .note strong {
+            color: #2563eb;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <h1>章節 × 認知層次 × 答對率 熱力圖</h1>
+        <p class="subtitle">色彩表示各章節在不同認知層次的平均答對率／得分率（含單選、多選、題組題）</p>
+
+        <div class="chart-section">
+            <div class="section-header">
+                <div>
+                    <h2>全體答對率</h2>
+                    <p>全體考生 (P)</p>
+                </div>
+            </div>
+            <div class="chart-wrapper" id="chart-all"></div>
+        </div>
+
+        <div class="chart-section">
+            <div class="section-header">
+                <div>
+                    <h2>高分組答對率</h2>
+                    <p>前 2 位考生 (Ph)</p>
+                </div>
+            </div>
+            <div class="chart-wrapper" id="chart-high"></div>
+        </div>
+
+        <div class="chart-section">
+            <div class="section-header">
+                <div>
+                    <h2>低分組答對率</h2>
+                    <p>後 2 位考生 (Pl)</p>
+                </div>
+            </div>
+            <div class="chart-wrapper" id="chart-low"></div>
+        </div>
+
+        <div class="legend">
+            <span>0%</span>
+            <div class="legend-bar"></div>
+            <span>100%</span>
+        </div>
+        <div class="note">
+            <strong>說明：</strong> 根據雙向細目表的題數配置，依題號順序分配至章節與認知層次。色塊平均自各題 P / Ph / Pl 答對率（多選題以得分率換算）。空白代表該章節未涵蓋該層次題目。
+        </div>
+    </div>
+
+    <script>
+        const levels = ['記憶', '理解', '應用', '分析', '評鑑', '創造'];
+        const chapters = [
+            { id: '3-1', label: '3-1 平面運動的描述' },
+            { id: '3-2', label: '3-2 平面運動的速度與加速度' },
+            { id: '3-3', label: '3-3 拋體運動' }
+        ];
+
+        const questionData = [
+            // 單選題
+            { id: 'Q1', chapterId: '3-1', level: '應用', rates: { all: 100, high: 100, low: 100 } },
+            { id: 'Q2', chapterId: '3-2', level: '記憶', rates: { all: 100, high: 100, low: 100 } },
+            { id: 'Q3', chapterId: '3-3', level: '記憶', rates: { all: 100, high: 100, low: 100 } },
+            { id: 'Q4', chapterId: '3-3', level: '記憶', rates: { all: 100, high: 100, low: 100 } },
+            { id: 'Q5', chapterId: '3-3', level: '記憶', rates: { all: 100, high: 100, low: 100 } },
+            { id: 'Q6', chapterId: '3-3', level: '記憶', rates: { all: 80, high: 100, low: 50 } },
+            { id: 'Q7', chapterId: '3-3', level: '記憶', rates: { all: 100, high: 100, low: 100 } },
+            { id: 'Q8', chapterId: '3-3', level: '理解', rates: { all: 80, high: 100, low: 50 } },
+            { id: 'Q9', chapterId: '3-3', level: '理解', rates: { all: 80, high: 100, low: 50 } },
+            { id: 'Q10', chapterId: '3-3', level: '理解', rates: { all: 100, high: 100, low: 100 } },
+            { id: 'Q11', chapterId: '3-3', level: '理解', rates: { all: 0, high: 0, low: 0 } },
+            { id: 'Q12', chapterId: '3-3', level: '應用', rates: { all: 40, high: 50, low: 50 } },
+            { id: 'Q13', chapterId: '3-3', level: '應用', rates: { all: 0, high: 0, low: 0 } },
+            { id: 'Q14', chapterId: '3-3', level: '應用', rates: { all: 40, high: 50, low: 0 } },
+            // 多選題（得分率）
+            { id: '*1', chapterId: '3-2', level: '記憶', rates: { all: 92, high: 100, low: 80 } },
+            { id: '*2', chapterId: '3-2', level: '記憶', rates: { all: 84, high: 100, low: 80 } },
+            { id: '*3', chapterId: '3-3', level: '理解', rates: { all: 76, high: 60, low: 80 } },
+            { id: '*4', chapterId: '3-3', level: '理解', rates: { all: 44, high: 50, low: 50 } },
+            { id: '*5', chapterId: '3-3', level: '理解', rates: { all: 16, high: 10, low: 20 } },
+            { id: '*6', chapterId: '3-3', level: '應用', rates: { all: 76, high: 80, low: 80 } },
+            { id: '*7', chapterId: '3-3', level: '應用', rates: { all: 52, high: 60, low: 40 } },
+            // 題組題
+            { id: '題組1', chapterId: '3-2', level: '應用', rates: { all: 100, high: 100, low: 100 } },
+            { id: '題組2', chapterId: '3-2', level: '分析', rates: { all: 40, high: 50, low: 0 } },
+            { id: '題組3', chapterId: '3-3', level: '記憶', rates: { all: 60, high: 50, low: 50 } },
+            { id: '題組4', chapterId: '3-3', level: '理解', rates: { all: 80, high: 100, low: 50 } },
+            { id: '題組5', chapterId: '3-3', level: '理解', rates: { all: 100, high: 100, low: 100 } },
+            { id: '題組6', chapterId: '3-3', level: '理解', rates: { all: 80, high: 100, low: 50 } },
+            { id: '題組7', chapterId: '3-3', level: '理解', rates: { all: 100, high: 100, low: 100 } },
+            { id: '題組8', chapterId: '3-3', level: '理解', rates: { all: 100, high: 100, low: 100 } },
+            { id: '題組9', chapterId: '3-3', level: '應用', rates: { all: 20, high: 50, low: 0 } },
+            { id: '題組10', chapterId: '3-3', level: '應用', rates: { all: 40, high: 50, low: 50 } },
+            { id: '題組11', chapterId: '3-3', level: '應用', rates: { all: 40, high: 50, low: 50 } },
+            { id: '題組12', chapterId: '3-3', level: '應用', rates: { all: 20, high: 50, low: 0 } }
+        ];
+
+        const sections = [
+            { key: 'all', title: '全體答對率', target: 'chart-all' },
+            { key: 'high', title: '高分組答對率', target: 'chart-high' },
+            { key: 'low', title: '低分組答對率', target: 'chart-low' }
+        ];
+
+        const margin = { top: 70, right: 40, bottom: 50, left: 240 };
+        const gridSize = 90;
+        const width = levels.length * gridSize;
+        const height = chapters.length * gridSize;
+        const colorScale = d3.scaleSequential()
+            .domain([0, 100])
+            .interpolator(d3.interpolateRdYlGn);
+
+        const aggregateByChapter = rateKey => d3.rollup(
+            questionData,
+            values => {
+                const rates = values
+                    .map(d => d.rates[rateKey])
+                    .filter(v => typeof v === 'number');
+                if (!rates.length) return null;
+                return {
+                    avg: d3.mean(rates),
+                    count: rates.length,
+                    questions: values.map(d => d.id)
+                };
+            },
+            d => d.chapterId,
+            d => d.level
+        );
+
+        const renderHeatmap = (containerId, rateKey) => {
+            const matrix = aggregateByChapter(rateKey);
+            const wrapper = d3.select(`#${containerId}`);
+            wrapper.selectAll('*').remove();
+
+            const svg = wrapper
+                .append('svg')
+                .attr('width', width + margin.left + margin.right)
+                .attr('height', height + margin.top + margin.bottom)
+                .append('g')
+                .attr('transform', `translate(${margin.left},${margin.top})`);
+
+            const tooltip = wrapper
+                .append('div')
+                .attr('class', 'tooltip');
+
+            svg.selectAll('.x-label')
+                .data(levels)
+                .enter()
+                .append('text')
+                .attr('class', 'axis-label x-label')
+                .attr('x', (_, i) => i * gridSize + gridSize / 2)
+                .attr('y', -20)
+                .text(d => d);
+
+            svg.selectAll('.y-label')
+                .data(chapters)
+                .enter()
+                .append('text')
+                .attr('class', 'axis-label y-label')
+                .attr('x', -20)
+                .attr('y', (_, i) => i * gridSize + gridSize / 2)
+                .attr('dy', '0.35em')
+                .text(d => d.label);
+
+            const cells = svg.selectAll('.cell-group')
+                .data(chapters.flatMap((chapter, rowIdx) =>
+                    levels.map((level, colIdx) => {
+                        const bucket = matrix.get(chapter.id)?.get(level) || null;
+                        return { chapter, level, row: rowIdx, col: colIdx, data: bucket };
+                    })
+                ))
+                .enter()
+                .append('g')
+                .attr('class', 'cell-group')
+                .attr('transform', d => `translate(${d.col * gridSize}, ${d.row * gridSize})`);
+
+            cells.append('rect')
+                .attr('width', gridSize - 8)
+                .attr('height', gridSize - 8)
+                .attr('rx', 12)
+                .attr('ry', 12)
+                .attr('x', 4)
+                .attr('y', 4)
+                .attr('fill', d => d.data ? colorScale(d.data.avg) : '#f4f6fb')
+                .attr('opacity', d => d.data ? 1 : 0.25)
+                .attr('stroke', 'rgba(15,23,42,0.08)')
+                .attr('stroke-width', 1)
+                .on('mousemove', (event, d) => {
+                    if (!d.data) {
+                        tooltip.style('opacity', 0);
+                        return;
+                    }
+                    tooltip.style('opacity', 1)
+                        .html(`
+                            <strong>${d.chapter.label}</strong><br>
+                            層次：${d.level}<br>
+                            平均答對率：${d.data.avg.toFixed(1)}%<br>
+                            題目數：${d.data.count} 題<br>
+                            題號：${d.data.questions.join(', ')}
+                        `)
+                        .style('left', `${event.offsetX + 10}px`)
+                        .style('top', `${event.offsetY - 10}px`);
+                })
+                .on('mouseleave', () => tooltip.style('opacity', 0));
+
+            cells.filter(d => d.data)
+                .append('text')
+                .attr('class', 'cell-value')
+                .attr('x', gridSize / 2)
+                .attr('y', gridSize / 2 - 4)
+                .attr('text-anchor', 'middle')
+                .text(d => `${Math.round(d.data.avg)}%`);
+
+            cells.filter(d => d.data)
+                .append('text')
+                .attr('class', 'cell-sub')
+                .attr('x', gridSize / 2)
+                .attr('y', gridSize / 2 + 14)
+                .attr('text-anchor', 'middle')
+                .text(d => `${d.data.count} 題`);
+
+            cells.filter(d => !d.data)
+                .append('text')
+                .attr('class', 'cell-sub')
+                .attr('x', gridSize / 2)
+                .attr('y', gridSize / 2)
+                .attr('text-anchor', 'middle')
+                .text('—');
+        };
+
+        sections.forEach(section => renderHeatmap(section.target, section.key));
+    </script>
+</body>
+</html>
